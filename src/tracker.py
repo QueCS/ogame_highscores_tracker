@@ -29,3 +29,46 @@ org = config.get("INFLUXDB", {}).get("org")
 database = config.get("INFLUXDB", {}).get("database")
 token = config.get("INFLUXDB", {}).get("token")
 client = InfluxDBClient3(token=token, org=org, host=host, database=database)
+
+
+def fetch_api(server: str, cat: str, typ: str) -> dict:
+    """
+    Fetches and returns OGame "highscores" API data.
+
+    Args:
+        server (str): The ID of the OGame server.
+        cat (str): The highscore category.
+        typ (str): The highscore type.
+
+    Returns:
+        data (dict): A dictionnary of the "highscores" API JSON response.
+
+    Raises:
+        requests.exceptions.RequestException: If there is an error while making the API request.
+        json.JSONDecodeError: If the JSON-formatted data cannot be decoded into a Python object.
+    """
+    url = f"https://s{server}.ogame.gameforge.com/api/highscore.xml?toJson=1&category={cat}&type={typ}"
+    while True:
+        time.sleep(random.randrange(30, 60, 1))
+        logging.info(f"Fetching data from {url}.")
+        try:
+            response = requests.get(
+                url,
+            )
+        except requests.exceptions.RequestException as e:
+            logging.warning(f"Failed with status code: {e}. Trying again.")
+            continue
+        if response.status_code != 200:
+            logging.warning(
+                f"Failed with status code: {response.status_code}. Trying again."
+            )
+            continue
+        logging.info("Successfully fetched data.")
+        try:
+            data = json.loads(response.text)
+        except json.JSONDecodeError as e:
+            logging.warning(f"Failed to decode JSON response: {e}. Trying again.")
+            continue
+        logging.info("Successfully pased data.")
+        return data
+        break
