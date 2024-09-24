@@ -6,6 +6,7 @@ import json
 import time
 import random
 import logging
+import threading
 
 os.chdir(f"{os.path.dirname(__file__)}")
 
@@ -17,45 +18,55 @@ log_lvl_str = config.get("SCRIPT", {}).get("log_lvl")
 module_name, attribute_name = log_lvl_str.rsplit(".", 1)
 log_lvl = getattr(logging, attribute_name)
 
-logging.basicConfig(
-    format="%(asctime)s %(levelname)s - %(funcName)s(): %(message)s",
-    level=log_lvl,
-    filename="../logs/tracker.log",
-    filemode="a",
-)
-
 host = config.get("INFLUXDB", {}).get("host")
 org = config.get("INFLUXDB", {}).get("org")
 database = config.get("INFLUXDB", {}).get("database")
 token = config.get("INFLUXDB", {}).get("token")
 client = InfluxDBClient3(token=token, org=org, host=host, database=database)
 
+logging.basicConfig(
+    format="%(asctime)s %(levelname)s - %(funcName)s(): %(message)s",
+    level=log_lvl,
+    filename=f"{log_dir}",
+    filemode="a",
+)
+
 
 def main():
     servers = config.get("OGAME", {}).get("servers")
-    typs = config.get("OGAME", {}).get("types")
     cats = config.get("OGAME", {}).get("categories")
-    old_timestamp = 0
+    typs = config.get("OGAME", {}).get("types")
+    threads = []
     for server in servers:
-        for typ in typs:
-            for cat in cats:
-                while True:
-                    time.sleep(random.randrange(30, 60, 1))
-                    data = fetch_api(server, cat, typ)
-                    new_timestamp, api_updated = check_if_api_updated(
-                        data, old_timestamp
-                    )
-                    if api_updated:
-                        old_timestamp = new_timestamp
-                        update_db(data, new_timestamp, server, cat, typ)
-                        sleep_time = new_timestamp + 3600 - time.time()
-                        if sleep_time < 0:
-                            continue
-                        else:
-                            time.sleep(sleep_time)
-                            continue
-                    else:
-                        continue
+        for cat in cats:
+            for typ in typs:
+                thread = threading.Thread(target=process_task, args=(server, cat, typ))
+                thread.start()
+                threads.append(thread)
+    for thread in threads:
+        thread.join()
+
+
+def process_task(server, cat, typ):
+    """
+    Infinitely loops to check if the API has been updated and updates the database accordingly.
+    """
+    old_timestamp = 0
+    while True:
+        time.sleep(random.randrange(30, 60, 1))
+        data = fetch_api(server, cat, typ)
+        new_timestamp, api_updated = check_if_api_updated(data, old_timestamp)
+        if api_updated:
+            old_timestamp = new_timestamp
+            update_db(data, new_timestamp, server, cat, typ, client)
+            sleep_time = new_timestamp + 3600 - time.time()
+            if sleep_time < 0:
+                continue
+            else:
+                time.sleep(sleep_time)
+                continue
+        else:
+            continue
 
 
 def fetch_api(server: str, cat: str, typ: str) -> dict:
@@ -96,7 +107,7 @@ def fetch_api(server: str, cat: str, typ: str) -> dict:
         except json.JSONDecodeError as e:
             logging.warning(f"Failed to decode JSON response: {e}. Trying again.")
             continue
-        logging.info("Successfully pased data.")
+        logging.info("Successfully parsed data.")
         return data
         break
 
@@ -136,13 +147,7 @@ def update_db(
     typ: str,
     db_client: InfluxDBClient3,
 ) -> None:
-    if cat == 0:
-        highscore_category = "player"
-    elif cat == 1:
-        highscore_category = "alliance"
-    else:
-        logging.warning(f"Invalid highscore category: {cat}.")
-        highscore_category = "unknown"
+    logging.info("Parsing data and updating database...")
     if typ == 0:
         highscore_type = "general"
     elif typ == 1:
@@ -170,22 +175,41 @@ def update_db(
     else:
         logging.warning(f"Invalid highscore type: {typ}.")
         highscore_type = "unkown"
-    logging.info("Parsing data and updating database...")
-    for player in data["player"]:
-        player_id = int(player["@attributes"]["id"])
-        rank = int(player["@attributes"]["position"])
-        score = int(player["@attributes"]["score"])
-
-        point = (
-            Point(player_id)
-            .tag("server", server)
-            .tag("category", highscore_category)
-            .tag("type", highscore_type)
-            .field("rank", rank)
-            .field("score", score)
-            .time(timestamp, write_precision=WritePrecision.S)
-        )
-        client.write(point)
+    if cat == 1:
+        highscore_category = "player"
+        for player in data["player"]:
+            player_id = int(player["@attributes"]["id"])
+            rank = int(player["@attributes"]["position"])
+            score = int(player["@attributes"]["score"])
+            point = (
+                Point(player_id)
+                .tag("server", server)
+                .tag("category", highscore_category)
+                .tag("type", highscore_type)
+                .field("rank", rank)
+                .field("score", score)
+                .time(timestamp, write_precision=WritePrecision.S)
+            )
+            client.write(point)
+    elif cat == 2:
+        highscore_category = "alliance"
+        for alliance in data["alliance"]:
+            alliance_id = int(alliance["@attributes"]["id"])
+            rank = int(alliance["@attributes"]["position"])
+            score = int(alliance["@attributes"]["score"])
+            point = (
+                Point(alliance_id)
+                .tag("server", server)
+                .tag("category", highscore_category)
+                .tag("type", highscore_type)
+                .field("rank", rank)
+                .field("score", score)
+                .time(timestamp, write_precision=WritePrecision.S)
+            )
+            client.write(point)
+    else:
+        logging.warning(f"Invalid highscore category: {cat}.")
+        highscore_category = "unknown"
 
 
 if __name__ == "__main__":
