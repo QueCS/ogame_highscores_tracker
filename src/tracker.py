@@ -31,6 +31,33 @@ token = config.get("INFLUXDB", {}).get("token")
 client = InfluxDBClient3(token=token, org=org, host=host, database=database)
 
 
+def main():
+    servers = config.get("OGAME", {}).get("servers")
+    typs = config.get("OGAME", {}).get("types")
+    cats = config.get("OGAME", {}).get("categories")
+    old_timestamp = 0
+    for server in servers:
+        for typ in typs:
+            for cat in cats:
+                while True:
+                    time.sleep(random.randrange(30, 60, 1))
+                    data = fetch_api(server, cat, typ)
+                    new_timestamp, api_updated = check_if_api_updated(
+                        data, old_timestamp
+                    )
+                    if api_updated:
+                        old_timestamp = new_timestamp
+                        update_db(data, new_timestamp, server, cat, typ)
+                        sleep_time = new_timestamp + 3600 - time.time()
+                        if sleep_time < 0:
+                            continue
+                        else:
+                            time.sleep(sleep_time)
+                            continue
+                    else:
+                        continue
+
+
 def fetch_api(server: str, cat: str, typ: str) -> dict:
     """
     Fetches and returns OGame "highscores" API data.
@@ -159,3 +186,7 @@ def update_db(
             .time(timestamp, write_precision=WritePrecision.S)
         )
         client.write(point)
+
+
+if __name__ == "__main__":
+    main()
