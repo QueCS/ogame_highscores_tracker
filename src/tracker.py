@@ -72,3 +72,30 @@ def fetch_api(server: str, cat: str, typ: str) -> dict:
         logging.info("Successfully pased data.")
         return data
         break
+
+
+def check_if_api_updated(data: dict, old_timestamp: int) -> (int, bool):
+    """
+    Checks if the API data has been updated since the last fetch.
+
+    Args:
+        data (dict): A dictionnary of the "highscores" API JSON response.
+        old_timestamp (int): The timestamp of the last fetched data.
+
+    Returns:
+        bool: True if the API data has been updated, False otherwise or if a KeError is raised.
+
+    Raises:
+        KeyError: If the "timestamp" key is not found in the "@attributes" section of the data.
+    """
+    try:
+        new_timestamp = int(data["@attributes"]["timestamp"])
+    except KeyError as e:
+        logging.warning(f"Failed to find timestamp in API response: {e}.")
+        return False
+    if new_timestamp > old_timestamp:
+        logging.info("API updated.")
+        return new_timestamp, True
+    else:
+        logging.info("API not updated yet. Trying again.")
+        return old_timestamp, False
