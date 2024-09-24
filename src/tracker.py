@@ -99,3 +99,63 @@ def check_if_api_updated(data: dict, old_timestamp: int) -> (int, bool):
     else:
         logging.info("API not updated yet. Trying again.")
         return old_timestamp, False
+
+
+def update_db(
+    data: dict,
+    timestamp: int,
+    server: str,
+    cat: str,
+    typ: str,
+    db_client: InfluxDBClient3,
+) -> None:
+    if cat == 0:
+        highscore_category = "player"
+    elif cat == 1:
+        highscore_category = "alliance"
+    else:
+        logging.warning(f"Invalid highscore category: {cat}.")
+        highscore_category = "unknown"
+    if typ == 0:
+        highscore_type = "general"
+    elif typ == 1:
+        highscore_type = "economy"
+    elif typ == 2:
+        highscore_type = "research"
+    elif typ == 3:
+        highscore_type = "military"
+    elif typ == 4:
+        highscore_type = "mili_lost"
+    elif typ == 5:
+        highscore_type = "mili_built"
+    elif typ == 6:
+        highscore_type = "mili_destroyed"
+    elif typ == 7:
+        highscore_type = "honor"
+    elif typ == 8:
+        highscore_type = "lifeforms"
+    elif typ == 9:
+        highscore_type = "lf_economy"
+    elif typ == 10:
+        highscore_type = "lf_research"
+    elif typ == 11:
+        highscore_type = "lf_discovery"
+    else:
+        logging.warning(f"Invalid highscore type: {typ}.")
+        highscore_type = "unkown"
+    logging.info("Parsing data and updating database...")
+    for player in data["player"]:
+        player_id = int(player["@attributes"]["id"])
+        rank = int(player["@attributes"]["position"])
+        score = int(player["@attributes"]["score"])
+
+        point = (
+            Point(player_id)
+            .tag("server", server)
+            .tag("category", highscore_category)
+            .tag("type", highscore_type)
+            .field("rank", rank)
+            .field("score", score)
+            .time(timestamp, write_precision=WritePrecision.S)
+        )
+        client.write(point)
