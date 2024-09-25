@@ -4,8 +4,8 @@ from influxdb_client_3 import InfluxDBClient3, Point, WritePrecision
 import requests
 import json
 import time
-import random
 import logging
+import itertools
 import threading
 
 os.chdir(f"{os.path.dirname(__file__)}")
@@ -24,41 +24,39 @@ database = config.get("INFLUXDB", {}).get("database")
 token = config.get("INFLUXDB", {}).get("token")
 client = InfluxDBClient3(token=token, org=org, host=host, database=database)
 
-logging.basicConfig(
-    format="%(asctime)s %(levelname)s - %(funcName)s(): %(message)s",
-    level=log_lvl,
-    filename=f"{log_dir}",
-    filemode="a",
-)
-
 
 def main():
     servers = config.get("OGAME", {}).get("servers")
     cats = config.get("OGAME", {}).get("categories")
     typs = config.get("OGAME", {}).get("types")
-    threads = []
-    for server in servers:
-        for cat in cats:
-            for typ in typs:
-                thread = threading.Thread(target=process_task, args=(server, cat, typ))
-                thread.start()
-                threads.append(thread)
-    for thread in threads:
-        thread.join()
+    for server, cat, typ in itertools.product(servers, cats, typs):
+        time.sleep(1)
+        thread = threading.Thread(target=process_task, args=(server, cat, typ))
+        thread.start()
 
 
 def process_task(server, cat, typ):
     """
     Infinitely loops to check if the API has been updated and updates the database accordingly.
     """
+    logger = logging.getLogger(f"{server}_{cat}_{typ}_tracker")
+    logger.setLevel(log_lvl)
+    log_filename = f"{log_dir}/{server}_{cat}_{typ}_tracker.log"
+    if not os.path.exists(os.path.dirname(log_filename)):
+        os.makedirs(os.path.dirname(log_filename))
+    file_handler = logging.FileHandler(log_filename)
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s - %(funcName)s(): %(message)s"
+    )
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
     old_timestamp = 0
     while True:
-        time.sleep(random.randrange(30, 60, 1))
-        data = fetch_api(server, cat, typ)
-        new_timestamp, api_updated = check_if_api_updated(data, old_timestamp)
+        data = fetch_api(server, cat, typ, logger)
+        new_timestamp, api_updated = check_if_api_updated(data, old_timestamp, logger)
         if api_updated:
             old_timestamp = new_timestamp
-            update_db(data, new_timestamp, server, cat, typ, client)
+            update_db(data, new_timestamp, server, cat, typ, client, logger)
             sleep_time = new_timestamp + 3600 - time.time()
             if sleep_time < 0:
                 continue
@@ -69,7 +67,7 @@ def process_task(server, cat, typ):
             continue
 
 
-def fetch_api(server: str, cat: str, typ: str) -> dict:
+def fetch_api(server: str, cat: str, typ: str, logger: logging.Logger) -> dict:
     """
     Fetches and returns OGame "highscores" API data.
 
@@ -87,32 +85,33 @@ def fetch_api(server: str, cat: str, typ: str) -> dict:
     """
     url = f"https://s{server}.ogame.gameforge.com/api/highscore.xml?toJson=1&category={cat}&type={typ}"
     while True:
-        time.sleep(random.randrange(30, 60, 1))
-        logging.info(f"Fetching data from {url}.")
+        logger.info(f"Fetching data from {url}.")
         try:
             response = requests.get(
                 url,
             )
         except requests.exceptions.RequestException as e:
-            logging.warning(f"Failed with status code: {e}. Trying again.")
+            logger.warning(f"Failed with status code: {e}. Trying again.")
             continue
         if response.status_code != 200:
-            logging.warning(
+            logger.warning(
                 f"Failed with status code: {response.status_code}. Trying again."
             )
             continue
-        logging.info("Successfully fetched data.")
+        logger.info("Successfully fetched data.")
         try:
             data = json.loads(response.text)
         except json.JSONDecodeError as e:
-            logging.warning(f"Failed to decode JSON response: {e}. Trying again.")
+            logger.warning(f"Failed to decode JSON response: {e}. Trying again.")
             continue
-        logging.info("Successfully parsed data.")
+        logger.info("Successfully parsed data.")
         return data
         break
 
 
-def check_if_api_updated(data: dict, old_timestamp: int) -> (int, bool):
+def check_if_api_updated(
+    data: dict, old_timestamp: int, logger: logging.Logger
+) -> (int, bool):
     """
     Checks if the API data has been updated since the last fetch.
 
@@ -129,13 +128,13 @@ def check_if_api_updated(data: dict, old_timestamp: int) -> (int, bool):
     try:
         new_timestamp = int(data["@attributes"]["timestamp"])
     except KeyError as e:
-        logging.warning(f"Failed to find timestamp in API response: {e}.")
+        logger.warning(f"Failed to find timestamp in API response: {e}.")
         return False
     if new_timestamp > old_timestamp:
-        logging.info("API updated.")
+        logger.info("API updated.")
         return new_timestamp, True
     else:
-        logging.info("API not updated yet. Trying again.")
+        logger.info("API not updated yet. Trying again.")
         return old_timestamp, False
 
 
@@ -146,8 +145,10 @@ def update_db(
     cat: str,
     typ: str,
     db_client: InfluxDBClient3,
+    logger: logging.Logger,
 ) -> None:
-    logging.info("Parsing data and updating database...")
+    logger.info("Parsing data and updating database...")
+    points = []
     if typ == 0:
         highscore_type = "general"
     elif typ == 1:
@@ -173,24 +174,44 @@ def update_db(
     elif typ == 11:
         highscore_type = "lf_discovery"
     else:
-        logging.warning(f"Invalid highscore type: {typ}.")
+        logger.warning(f"Invalid highscore type: {typ}.")
         highscore_type = "unkown"
     if cat == 1:
         highscore_category = "player"
         for player in data["player"]:
-            player_id = int(player["@attributes"]["id"])
-            rank = int(player["@attributes"]["position"])
-            score = int(player["@attributes"]["score"])
-            point = (
-                Point(player_id)
-                .tag("server", server)
-                .tag("category", highscore_category)
-                .tag("type", highscore_type)
-                .field("rank", rank)
-                .field("score", score)
-                .time(timestamp, write_precision=WritePrecision.S)
-            )
-            client.write(point)
+            if highscore_type == "military":
+                player_id = int(player["@attributes"]["id"])
+                rank = int(player["@attributes"]["position"])
+                score = int(player["@attributes"]["score"])
+                try:
+                    ships = int(player["@attributes"]["ships"])
+                except KeyError:
+                    ships = 0
+                point = (
+                    Point(player_id)
+                    .tag("server", server)
+                    .tag("category", highscore_category)
+                    .tag("type", highscore_type)
+                    .field("rank", rank)
+                    .field("score", score)
+                    .field("ships", ships)
+                    .time(timestamp, write_precision=WritePrecision.S)
+                )
+                points.append(point)
+            else:
+                player_id = int(player["@attributes"]["id"])
+                rank = int(player["@attributes"]["position"])
+                score = int(player["@attributes"]["score"])
+                point = (
+                    Point(player_id)
+                    .tag("server", server)
+                    .tag("category", highscore_category)
+                    .tag("type", highscore_type)
+                    .field("rank", rank)
+                    .field("score", score)
+                    .time(timestamp, write_precision=WritePrecision.S)
+                )
+                points.append(point)
     elif cat == 2:
         highscore_category = "alliance"
         for alliance in data["alliance"]:
@@ -206,10 +227,12 @@ def update_db(
                 .field("score", score)
                 .time(timestamp, write_precision=WritePrecision.S)
             )
-            client.write(point)
+            points.append(point)
     else:
-        logging.warning(f"Invalid highscore category: {cat}.")
+        logger.warning(f"Invalid highscore category: {cat}.")
         highscore_category = "unknown"
+    db_client.write(points)
+    logger.info("Done !")
 
 
 if __name__ == "__main__":
