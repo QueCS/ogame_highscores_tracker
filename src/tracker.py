@@ -6,7 +6,6 @@ import json
 import time
 import logging
 import itertools
-import threading
 
 os.chdir(f"{os.path.dirname(__file__)}")
 
@@ -29,15 +28,15 @@ def main():
     servers = config.get("OGAME", {}).get("servers")
     cats = config.get("OGAME", {}).get("categories")
     typs = config.get("OGAME", {}).get("types")
+    iterations = len(servers) * len(cats) * len(typs)
     for server, cat, typ in itertools.product(servers, cats, typs):
-        time.sleep(1)
-        thread = threading.Thread(target=process_task, args=(server, cat, typ))
-        thread.start()
+        process_task(server, cat, typ)
+        time.sleep(900 / iterations)
 
 
 def process_task(server, cat, typ):
     """
-    Infinitely loops to check if the API has been updated and updates the database accordingly.
+    Check if the API has been updated and updates the database accordingly.
     """
     logger = logging.getLogger(f"{server}_{cat}_{typ}_tracker")
     logger.setLevel(log_lvl)
@@ -51,20 +50,13 @@ def process_task(server, cat, typ):
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
     old_timestamp = 0
-    while True:
-        data = fetch_api(server, cat, typ, logger)
-        new_timestamp, api_updated = check_if_api_updated(data, old_timestamp, logger)
-        if api_updated:
-            old_timestamp = new_timestamp
-            update_db(data, new_timestamp, server, cat, typ, client, logger)
-            sleep_time = new_timestamp + 3600 - time.time()
-            if sleep_time < 0:
-                continue
-            else:
-                time.sleep(sleep_time)
-                continue
-        else:
-            continue
+    data = fetch_api(server, cat, typ, logger)
+    new_timestamp, api_updated = check_if_api_updated(data, old_timestamp, logger)
+    if api_updated:
+        old_timestamp = new_timestamp
+        update_db(data, new_timestamp, server, cat, typ, client, logger)
+        return True
+    return False
 
 
 def fetch_api(server: str, cat: str, typ: str, logger: logging.Logger) -> dict:
@@ -84,29 +76,23 @@ def fetch_api(server: str, cat: str, typ: str, logger: logging.Logger) -> dict:
         json.JSONDecodeError: If the JSON-formatted data cannot be decoded into a Python object.
     """
     url = f"https://s{server}.ogame.gameforge.com/api/highscore.xml?toJson=1&category={cat}&type={typ}"
-    while True:
-        logger.info(f"Fetching data from {url}.")
-        try:
-            response = requests.get(
-                url,
-            )
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"Failed with status code: {e}. Trying again.")
-            continue
-        if response.status_code != 200:
-            logger.warning(
-                f"Failed with status code: {response.status_code}. Trying again."
-            )
-            continue
-        logger.info("Successfully fetched data.")
-        try:
-            data = json.loads(response.text)
-        except json.JSONDecodeError as e:
-            logger.warning(f"Failed to decode JSON response: {e}. Trying again.")
-            continue
-        logger.info("Successfully parsed data.")
-        return data
-        break
+    logger.info(f"Fetching data from {url}.")
+    try:
+        response = requests.get(url)
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"Failed with status code: {e}.")
+        return None
+    if response.status_code != 200:
+        logger.warning(f"Failed with status code: {response.status_code}.")
+        return None
+    logger.info("Successfully fetched data.")
+    try:
+        data = json.loads(response.text)
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to decode JSON response: {e}.")
+        return None
+    logger.info("Successfully parsed data.")
+    return data
 
 
 def check_if_api_updated(
@@ -134,7 +120,7 @@ def check_if_api_updated(
         logger.info("API updated.")
         return new_timestamp, True
     else:
-        logger.info("API not updated yet. Trying again.")
+        logger.info("API not updated yet.")
         return old_timestamp, False
 
 
