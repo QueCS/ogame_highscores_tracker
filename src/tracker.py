@@ -1,4 +1,5 @@
 import os
+import glob
 import tomllib
 from influxdb_client_3 import InfluxDBClient3, Point, WritePrecision
 import requests
@@ -18,6 +19,9 @@ def main():
     log_dir, log_lvl = get_logging_config(config)
     client = get_influxdb_client(config)
     servers, cats, typs = get_ogame_config(config)
+
+    # Remove .log.old logs from log_dir
+    log_cleanup(log_dir)
 
     # Indefinitely iterate over all combinations of server, category and type
     iterations = len(servers) * len(cats) * len(typs)
@@ -210,6 +214,13 @@ def get_ogame_config(config):
     cats = config.get("OGAME", {}).get("categories")
     typs = config.get("OGAME", {}).get("types")
     return servers, cats, typs
+
+
+def log_cleanup(log_dir):
+    for old_log in glob.glob(os.path.join(log_dir, "*.log.old")):
+        os.remove(old_log)
+    for log in glob.glob(os.path.join(log_dir, "*.log")):
+        os.rename(log, f"{log}.old")
 
 
 if __name__ == "__main__":
