@@ -1,7 +1,7 @@
 # OGame highscores tracker
 
 Python script to fetch player highscores from [OGame public APIs](https://forum.origin.ogame.gameforge.com/forum/thread/44-ogame-api/) and store them inside an [InfluxDB](https://www.influxdata.com/) time series database.\
-Data can then be explored using the InfluxDB UI or CLI or using the provided [Shiny](https://shiny.posit.co/py/) web-application.
+Data can then be explored using the InfluxDB UI or CLI or using the provided [Shiny](https://shiny.posit.co/py/) web application.
 
 ## Getting started
 
@@ -46,6 +46,12 @@ Launch `app.py` in the virtual environment.
 .venv/bin/shiny src/app.py >> logs/app.log
 ```
 Note that you can adjust the host and port on which you want the webapp to be reachable by using the options `--host` and `--port`.
+
+## One-liner installation
+
+```bash
+git clone https://github.com/QueCS/ogame_highscores_tracker.git && cd ogame_highscores_tracker && python3 -m venv .venv && .venv/bin/pip3 install -r requirements.txt
+```
 
 ## Disclaimer
 
