@@ -30,7 +30,7 @@ Install necessary dependencies in the virtual environment.
 Modify the configuration file as see fit, keep it saved as `config.toml`:
 - The `[INFLUXDB]` section must be adjusted to match your InfluxDB setup.
 - The `[SCRIPT]` section configures scripts parmeters and can be left as is or modified.
-- The `[OGAME]` section configures which OGame server and highscores to track ([more information on highscores categories and types](https://s1-en.ogame.gameforge.com/api/highscore.xml?toJson=1&category=0&type=0)).
+- The `[OGAME]` section configures which OGame server and highscores to track ([more information on highscores categories and types](https://s1-en.ogame.gameforge.com/api/highscore.xml?toJson=1&category=0&type=0)) and can be left as is or modified.
 
 ##  Running the tracker
 
@@ -43,7 +43,7 @@ Launch `tracker.py` in the virtual environment.
 
 Launch `app.py` in the virtual environment.
 ```bash
-.venv/bin/shiny src/app.py >> logs/app.log
+.venv/bin/shiny run src/app.py >> logs/app.log
 ```
 Note that you can adjust the host and port on which you want the webapp to be reachable by using the options `--host` and `--port`.
 
