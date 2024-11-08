@@ -30,12 +30,14 @@ def get_influxdb_client(config):
 def get_ogame_config(config):
     servers = config.get("OGAME", {}).get("servers")
     typs = config.get("OGAME", {}).get("types")
-    return servers, typs
+    server_timezone = config.get("OGAME", {}).get("server_timezone")
+    local_timezone = config.get("OGAME", {}).get("local_timezone")
+    return servers, typs, server_timezone, local_timezone
 
 
 log_dir, log_lvl = get_logging_config(config)
 database, client = get_influxdb_client(config)
-servers, typs = get_ogame_config(config)
+servers, typs, server_timezone, local_timezone = get_ogame_config(config)
 
 typs_names = {
     0: "general",
@@ -56,7 +58,14 @@ highscores = [typs_names[t] for t in typs]
 query_api = client.query_api()
 
 
-def run_query(bucket: str, server: str, player_id: str, highscore: str):
+def run_query(
+    bucket: str,
+    server: str,
+    player_id: str,
+    highscore: str,
+    server_tz: str,
+    local_tz: str,
+):
     query = f"""
     from(bucket: "{bucket}")
     |> range(start: -90d)
@@ -67,10 +76,24 @@ def run_query(bucket: str, server: str, player_id: str, highscore: str):
     |> filter(fn: (r) => r["_field"] == "score")
     """
     result = query_api.query_data_frame(query=query)
-    result = result.drop(columns=["result", "table", "_start", "_stop"])
-    result = result.sort_values(by="_time", ascending=True)
-    result["diff"] = result["_value"].diff().fillna(0).astype(int)
-    result.insert(result.columns.get_loc("_value") + 1, "diff", result.pop("diff"))
+    result = result.drop(columns=["result", "table", "_start", "_stop", "_field"])
+    result.rename(
+        columns={
+            "_time": "UTC Datetime",
+            "_value": "Points",
+            "_measurement": "ID",
+            "category": "Category",
+            "server": "Server",
+            "type": "Highscore",
+        }
+    )
+    result = result.sort_values(by="UTC Datetime", ascending=True)
+    result.insert(1, "Local Datetime", result["UTC Datetime"].copy())
+    result.insert(1, "Server Datetime", result["UTC Datetime"].copy())
+    result["Local Datetime"].dt.tz_localize("UTC").dt.tz_convert(f"{local_tz}")
+    result["Server Datetime"].dt.tz_localize("UTC").dt.tz_convert(f"{server_tz}")
+    result["Delta"] = result["Points"].diff().fillna(0).astype(int)
+    result.insert(result.columns.get_loc("Points") + 1, "Delta", result.pop("Delta"))
     return result
 
 
@@ -100,6 +123,8 @@ def server(input, output, session):
             server=input.server._value,
             player_id=input.player_id._value,
             highscore=input.highscore._value,
+            server_tz=server_timezone,
+            local_tz=local_timezone,
         )
         return render.DataGrid(df, width=5000, height=1000)
 
