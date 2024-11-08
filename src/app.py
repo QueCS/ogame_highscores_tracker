@@ -77,7 +77,7 @@ def run_query(
     """
     result = query_api.query_data_frame(query=query)
     result = result.drop(columns=["result", "table", "_start", "_stop", "_field"])
-    result.rename(
+    result = result.rename(
         columns={
             "_time": "UTC Datetime",
             "_value": "Points",
