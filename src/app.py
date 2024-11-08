@@ -135,6 +135,8 @@ def server(input, output, session):
             server=input.server._value,
             player_id=input.player_id._value,
             highscore=input.highscore._value,
+            server_tz=server_timezone,
+            local_tz=local_timezone,
         )
         yield df.to_csv(index=False)
 
