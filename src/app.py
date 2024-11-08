@@ -90,8 +90,8 @@ def run_query(
     result = result.sort_values(by="UTC Datetime", ascending=True)
     result.insert(1, "Local Datetime", result["UTC Datetime"].copy())
     result.insert(1, "Server Datetime", result["UTC Datetime"].copy())
-    result["Local Datetime"].dt.tz_localize("UTC").dt.tz_convert(f"{local_tz}")
-    result["Server Datetime"].dt.tz_localize("UTC").dt.tz_convert(f"{server_tz}")
+    result["Local Datetime"].dt.tz_convert(f"{local_tz}")
+    result["Server Datetime"].dt.tz_convert(f"{server_tz}")
     result["Delta"] = result["Points"].diff().fillna(0).astype(int)
     result.insert(result.columns.get_loc("Points") + 1, "Delta", result.pop("Delta"))
     return result
