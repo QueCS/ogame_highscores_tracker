@@ -3,6 +3,10 @@ import tomllib
 from shiny import App, render, ui, reactive
 from influxdb_client import InfluxDBClient
 import logging
+import warnings
+from influxdb_client.client.warnings import MissingPivotFunction
+
+warnings.simplefilter("ignore", MissingPivotFunction)
 
 os.chdir(f"{os.path.dirname(__file__)}")
 
