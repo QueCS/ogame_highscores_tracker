@@ -65,10 +65,12 @@ def run_query(
     highscore: str,
     server_tz: str,
     local_tz: str,
+    days: str,
+    format: bool,
 ):
     query = f"""
     from(bucket: "{bucket}")
-    |> range(start: -90d)
+    |> range(start: -{days}d)
     |> filter(fn: (r) => r["server"] == "{server}")
     |> filter(fn: (r) => r["category"] == "player")
     |> filter(fn: (r) => r["_measurement"] ==  "{player_id}")
@@ -94,6 +96,23 @@ def run_query(
     result["Server Datetime"] = result["Server Datetime"].dt.tz_convert(f"{server_tz}")
     result["Delta"] = result["Points"].diff().fillna(0).astype(int)
     result.insert(result.columns.get_loc("Points") + 1, "Delta", result.pop("Delta"))
+    result["Total Delta"] = result["Delta"].cumsum()
+    result.insert(
+        result.columns.get_loc("Delta") + 1, "Total Delta", result.pop("Total Delta")
+    )
+    if format is True:
+        for col in ["Points", "Delta", "Total Delta"]:
+            if col in result.columns:
+                if col == "Points":
+                    result[col] = result[col].apply(
+                        lambda x: f"{int(x):,}".replace(",", " ")
+                    )
+                else:
+                    result[col] = result[col].apply(
+                        lambda x: f"+ {int(x):,}".replace(",", " ")
+                        if x >= 0
+                        else f"- {-int(x):,}".replace(",", " ")
+                    )
     return result
 
 
@@ -104,6 +123,7 @@ app_ui = ui.page_fluid(
             ui.input_select("server", "Server", choices=servers),
             ui.input_select("highscore", "Highscore", choices=highscores),
             ui.input_text("player_id", "Player ID"),
+            ui.input_text("days", "Last n days"),
             ui.input_action_button("run_query", "Run query"),
         ),
         ui.card(ui.output_data_frame("show_df")),
@@ -125,6 +145,8 @@ def server(input, output, session):
             highscore=input.highscore._value,
             server_tz=server_timezone,
             local_tz=local_timezone,
+            days=input.days._value,
+            format=True,
         )
         return render.DataGrid(df, width=5000, height=1000)
 
@@ -137,6 +159,8 @@ def server(input, output, session):
             highscore=input.highscore._value,
             server_tz=server_timezone,
             local_tz=local_timezone,
+            days=input.days._value,
+            format=False,
         )
         yield df.to_csv(index=False)
 
