@@ -30,7 +30,7 @@ Install necessary dependencies in the virtual environment.
 Modify the configuration file as see fit, keep it saved as `config.toml`:
 - The `[INFLUXDB]` section must be adjusted to match your InfluxDB setup.
 - The `[SCRIPT]` section configures scripts parmeters, can be left as is or modified.
-- The `[OGAME]` section configures which OGame server and highscores to track ([more information on highscores categories and types](https://s1-en.ogame.gameforge.com/api/highscore.xml?toJson=1&category=0&type=0)) as well as what [timezones](https://mljar.com/blog/list-pytz-timezones/) to use when generating tables using the Shiny we application, can be left as is or modified.
+- The `[OGAME]` section configures which OGame server and highscores to track ([more information on highscores categories and types](https://s1-en.ogame.gameforge.com/api/highscore.xml?toJson=1&category=0&type=0)) as well as what [timezones](https://mljar.com/blog/list-pytz-timezones/) to use when generating tables using the Shiny web application, can be left as is or modified.
 
 ##  Running the tracker
 
