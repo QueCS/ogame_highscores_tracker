@@ -123,7 +123,7 @@ app_ui = ui.page_fluid(
             ui.input_select("server", "Server", choices=servers),
             ui.input_select("highscore", "Highscore", choices=highscores),
             ui.input_text("player_id", "Player ID"),
-            ui.input_text("days", "Last n days"),
+            ui.input_text("days", "Last n days", "90"),
             ui.input_action_button("run_query", "Run query"),
         ),
         ui.card(ui.output_data_frame("show_df")),
