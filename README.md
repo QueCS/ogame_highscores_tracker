@@ -47,6 +47,20 @@ Launch `app.py` in the virtual environment.
 ```
 Note that you can adjust the host and port on which you want the webapp to be reachable by using the options `--host` and `--port`.
 
+## Using the shiny web application
+
+Enter necessary query parameters and click on the "Table", the "Analysis" button or both.
+
+The generated analysis consist in a series of bar-charts indicating whether the player gained some points or not whithin the timeframe of your choice for each day of the week, combined. The idea is to easily spot basic player habbits patterns. Two additional parameters are specific to it. "Time interval (min)" allows to adjust the timeframe stringency. "Timezone" allows to run the analysis using either the game server timezone, your local timezone (as set in `config.toml`) or UTC.
+
+The "Download raw table as .csv" link allows to download a raw table (without formating towards better readability) of the query result in order to perform additional manual data analysis if need be.
+
+![Alt text](https://i.ibb.co/3WT50Qr/Capture-d-cran-du-2024-11-17-18-16-00.png)
+
+The generated table is an easy-to-read summary of the query allowing to check point gain and loss of the chosen player.
+
+![Alt text](https://i.ibb.co/1JyG2c3/Capture-d-cran-du-2024-11-17-18-16-42.png)
+
 ## One-liner installation
 
 ```bash
