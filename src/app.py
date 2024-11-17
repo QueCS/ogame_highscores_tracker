@@ -5,8 +5,12 @@ from influxdb_client import InfluxDBClient
 import logging
 import warnings
 from influxdb_client.client.warnings import MissingPivotFunction
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
 
 warnings.simplefilter("ignore", MissingPivotFunction)
+pd.options.mode.copy_on_write = True
 
 os.chdir(f"{os.path.dirname(__file__)}")
 
@@ -82,13 +86,14 @@ def run_query(
     |> filter(fn: (r) => r["_field"] == "score")
     """
     result = query_api.query_data_frame(query=query)
-    result = result.drop(columns=["result", "table", "_start", "_stop", "_field"])
+    result = result.drop(
+        columns=["result", "table", "_start", "_stop", "_field", "category"]
+    )
     result = result.rename(
         columns={
             "_time": "UTC Datetime",
             "_value": "Points",
             "_measurement": "ID",
-            "category": "Category",
             "server": "Server",
             "type": "Highscore",
         }
@@ -103,6 +108,18 @@ def run_query(
     result["Total Delta"] = result["Delta"].cumsum()
     result.insert(
         result.columns.get_loc("Delta") + 1, "Total Delta", result.pop("Total Delta")
+    )
+    result["Gained Points"] = np.where(result["Delta"] > 0, 1, 0)
+    result.insert(
+        result.columns.get_loc("Total Delta") + 1,
+        "Gained Points",
+        result.pop("Gained Points"),
+    )
+    result["Day"] = result["Server Datetime"].dt.day_name()
+    result.insert(
+        result.columns.get_loc("Server Datetime") + 1,
+        "Day",
+        result.pop("Day"),
     )
     if format is True:
         for col in ["Points", "Delta", "Total Delta"]:
@@ -123,37 +140,28 @@ def run_query(
 app_ui = ui.page_fluid(
     ui.layout_sidebar(
         ui.sidebar(
-            "Query parameters",
+            "Query Parameters",
             ui.input_select("server", "Server", choices=servers),
             ui.input_select("highscore", "Highscore", choices=highscores),
             ui.input_text("player_id", "Player ID"),
             ui.input_text("days", "Last n days", "90"),
-            ui.input_action_button("run_query", "Run query"),
+            ui.input_action_button("run_query", "Table"),
+            "Analysis parameters",
+            ui.input_text("time_interval", "Time Interval (min)", "15"),
+            ui.input_select("timezone", "Timezone", choices=["Server", "Local", "UTC"]),
+            ui.input_action_button("run_analysis", "Analysis"),
         ),
-        ui.card(ui.output_data_frame("show_df")),
         ui.card(
-            ui.download_link(id="dl_df", label="Download query as .csv"), max_height=60
+            ui.download_link(id="dl_df", label="Download raw table as .csv"),
+            max_height=60,
         ),
+        ui.card(ui.output_plot("show_analysis"), width=5000, height=1100),
+        ui.card(ui.output_data_frame("show_df"), width=5000, height=1200),
     )
 )
 
 
 def server(input, output, session):
-    @render.data_frame
-    @reactive.event(input.run_query)
-    def show_df():
-        df = run_query(
-            bucket=database,
-            server=input.server._value,
-            player_id=input.player_id._value,
-            highscore=input.highscore._value,
-            server_tz=server_timezone,
-            local_tz=local_timezone,
-            days=input.days._value,
-            format=True,
-        )
-        return render.DataGrid(df, width=5000, height=1000)
-
     @render.download(filename="data.csv")
     def dl_df():
         df = run_query(
@@ -167,6 +175,79 @@ def server(input, output, session):
             format=False,
         )
         yield df.to_csv(index=False)
+
+    @render.data_frame
+    @reactive.event(input.run_query)
+    def show_df():
+        df = run_query(
+            bucket=database,
+            server=input.server._value,
+            player_id=input.player_id._value,
+            highscore=input.highscore._value,
+            server_tz=server_timezone,
+            local_tz=local_timezone,
+            days=input.days._value,
+            format=True,
+        )
+        return render.DataGrid(df, width=5000)
+
+    @render.plot
+    @reactive.event(input.run_analysis)
+    def show_analysis():
+        interval = int(input.time_interval._value)
+        tz = str(input.timezone._value)
+        df = run_query(
+            bucket=database,
+            server=input.server._value,
+            player_id=input.player_id._value,
+            highscore=input.highscore._value,
+            server_tz=server_timezone,
+            local_tz=local_timezone,
+            days=input.days._value,
+            format=False,
+        )
+        df = df[[f"{tz} Datetime", "Day", "Gained Points"]].copy()
+        days = [
+            day
+            for day in [
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+                "Sunday",
+            ]
+            if day in pd.unique(df["Day"])
+        ]
+        fig, axes = plt.subplots(nrows=len(days), ncols=1)
+
+        for i, day in enumerate(days):
+            subset_df = df[df["Day"].isin([day])]
+            subset_df[f"Rounded {tz} Datetime"] = subset_df[f"{tz} Datetime"].dt.floor(
+                f"{interval}min", ambiguous=True
+            )
+            subset_df["Time Interval"] = subset_df[
+                f"Rounded {tz} Datetime"
+            ].dt.strftime("%H:%M")
+            counts = (
+                subset_df.groupby("Time Interval")["Gained Points"]
+                .value_counts()
+                .unstack()
+            )
+            ax = counts.plot(kind="bar", stacked=True, ax=axes[i])
+            if i != 0:
+                ax.get_legend().remove()
+            else:
+                handles, labels = ax.get_legend_handles_labels()
+                ax.get_legend().remove()
+            ax.set_xlabel("")
+            ax.set_ylabel("Count")
+            ax.set_title(f"{day}s")
+            time_labels = np.unique(subset_df["Time Interval"])
+            ax.set_xticklabels(time_labels)
+        fig.legend(handles, labels, loc="upper right", title="Gained Points")
+        return fig
 
 
 app = App(app_ui, server)
