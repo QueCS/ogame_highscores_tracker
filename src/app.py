@@ -83,28 +83,34 @@ def run_query(
     |> filter(fn: (r) => r["category"] == "player")
     |> filter(fn: (r) => r["_measurement"] ==  "{player_id}")
     |> filter(fn: (r) => r["type"] == "{highscore}")
-    |> filter(fn: (r) => r["_field"] == "score")
+    |> filter(fn: (r) => r["_field"] == "score" or r["_field"] == "rank")
     """
-    result = query_api.query_data_frame(query=query)
-    result = result.drop(
-        columns=["result", "table", "_start", "_stop", "_field", "category"]
-    )
-    result = result.rename(
-        columns={
-            "_time": "UTC Datetime",
-            "_value": "Points",
-            "_measurement": "ID",
-            "server": "Server",
-            "type": "Highscore",
-        }
-    )
+    query_df = query_api.query_data_frame(query=query)
+    points = query_df[query_df["_field"] == "score"].copy()
+    ranks = query_df[query_df["_field"] == "rank"].copy()
+    for df in [points, ranks]:
+        df.rename(
+            columns={
+                "_time": "UTC Datetime",
+                "_value": df["_field"].iloc[0].capitalize(),
+                "_measurement": "ID",
+                "server": "Server",
+                "type": "Highscore",
+            },
+            inplace=True,
+        )
+        df.drop(
+            columns=["result", "table", "_start", "_stop", "_field", "category"],
+            inplace=True,
+        )
+    result = pd.merge(points, ranks, on=["UTC Datetime", "ID", "Server", "Highscore"])
     result = result.sort_values(by="UTC Datetime", ascending=True)
     result.insert(1, "Local Datetime", result["UTC Datetime"].copy())
     result.insert(2, "Server Datetime", result["UTC Datetime"].copy())
     result["Local Datetime"] = result["Local Datetime"].dt.tz_convert(f"{local_tz}")
     result["Server Datetime"] = result["Server Datetime"].dt.tz_convert(f"{server_tz}")
-    result["Delta"] = result["Points"].diff().fillna(0).astype(int)
-    result.insert(result.columns.get_loc("Points") + 1, "Delta", result.pop("Delta"))
+    result["Delta"] = result["Score"].diff().fillna(0).astype(int)
+    result.insert(result.columns.get_loc("Score") + 1, "Delta", result.pop("Delta"))
     result["Total Delta"] = result["Delta"].cumsum()
     result.insert(
         result.columns.get_loc("Delta") + 1, "Total Delta", result.pop("Total Delta")
@@ -121,10 +127,11 @@ def run_query(
         "Day",
         result.pop("Day"),
     )
+    result.insert(result.columns.get_loc("Score"), "Rank", result.pop("Rank"))
     if format is True:
-        for col in ["Points", "Delta", "Total Delta"]:
+        for col in ["Rank", "Score", "Delta", "Total Delta"]:
             if col in result.columns:
-                if col == "Points":
+                if col == "Score" or col == "Rank":
                     result[col] = result[col].apply(
                         lambda x: f"{int(x):,}".replace(",", " ")
                     )
