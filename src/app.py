@@ -1,7 +1,7 @@
 import warnings
 from influxdb_client.client.warnings import MissingPivotFunction
 import pandas as pd
-from app_utils import (
+from utils import (
     read_config_file,
     get_logging_config,
     get_influxdb_client,
@@ -18,7 +18,7 @@ pd.options.mode.copy_on_write = True
 config = read_config_file()
 log_dir, log_lvl = get_logging_config(config)
 database, client = get_influxdb_client(config)
-servers, typs, server_timezone, local_timezone = get_ogame_config(config)
+servers, cats, typs, server_timezone, local_timezone = get_ogame_config(config)
 highscores = typs_to_highscores(typs)
 query_api = client.query_api()
 

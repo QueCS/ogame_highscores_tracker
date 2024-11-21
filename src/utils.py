@@ -1,7 +1,16 @@
+import glob
 import os
 import tomllib
 import logging
 from influxdb_client import InfluxDBClient
+from influxdb_client_3 import InfluxDBClient3
+
+
+def log_cleanup(log_dir):
+    for old_log in glob.glob(os.path.join(log_dir, "*.log.old")):
+        os.remove(old_log)
+    for log in glob.glob(os.path.join(log_dir, "*.log")):
+        os.rename(log, f"{log}.old")
 
 
 def read_config_file():
@@ -28,12 +37,22 @@ def get_influxdb_client(config):
     return database, client
 
 
+def get_influxdb_client_v3(config):
+    host = config.get("INFLUXDB", {}).get("host")
+    org = config.get("INFLUXDB", {}).get("org")
+    database = config.get("INFLUXDB", {}).get("database")
+    token = config.get("INFLUXDB", {}).get("token")
+    client = InfluxDBClient3(token=token, org=org, host=host, database=database)
+    return client
+
+
 def get_ogame_config(config):
     servers = config.get("OGAME", {}).get("servers")
+    cats = config.get("OGAME", {}).get("categories")
     typs = config.get("OGAME", {}).get("types")
     server_timezone = config.get("OGAME", {}).get("server_timezone")
     local_timezone = config.get("OGAME", {}).get("local_timezone")
-    return servers, typs, server_timezone, local_timezone
+    return servers, cats, typs, server_timezone, local_timezone
 
 
 def typs_to_highscores(typs):

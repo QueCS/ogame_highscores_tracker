@@ -1,6 +1,11 @@
 import os
-import glob
-import tomllib
+from utils import (
+    read_config_file,
+    get_logging_config,
+    get_influxdb_client_v3,
+    get_ogame_config,
+    log_cleanup,
+)
 from influxdb_client_3 import InfluxDBClient3, Point, WritePrecision
 import requests
 import json
@@ -10,15 +15,13 @@ import itertools
 
 os.chdir(f"{os.path.dirname(__file__)}")
 
-with open("../config.toml", "rb") as config_file:
-    config = tomllib.load(config_file)
-
 
 def main():
     # Parse config file
+    config = read_config_file()
     log_dir, log_lvl = get_logging_config(config)
-    client = get_influxdb_client(config)
-    servers, cats, typs = get_ogame_config(config)
+    client = get_influxdb_client_v3(config)
+    servers, cats, typs, server_timezone, local_timezone = get_ogame_config(config)
 
     # Remove .log.old logs from log_dir
     log_cleanup(log_dir)
@@ -190,37 +193,6 @@ def update_db(
         return None
     logger.info("Done")
     return None
-
-
-def get_logging_config(config):
-    log_dir = config.get("SCRIPT", {}).get("log_dir")
-    log_lvl_str = config.get("SCRIPT", {}).get("log_lvl")
-    module_name, attribute_name = log_lvl_str.rsplit(".", 1)
-    log_lvl = getattr(logging, attribute_name)
-    return log_dir, log_lvl
-
-
-def get_influxdb_client(config):
-    host = config.get("INFLUXDB", {}).get("host")
-    org = config.get("INFLUXDB", {}).get("org")
-    database = config.get("INFLUXDB", {}).get("database")
-    token = config.get("INFLUXDB", {}).get("token")
-    client = InfluxDBClient3(token=token, org=org, host=host, database=database)
-    return client
-
-
-def get_ogame_config(config):
-    servers = config.get("OGAME", {}).get("servers")
-    cats = config.get("OGAME", {}).get("categories")
-    typs = config.get("OGAME", {}).get("types")
-    return servers, cats, typs
-
-
-def log_cleanup(log_dir):
-    for old_log in glob.glob(os.path.join(log_dir, "*.log.old")):
-        os.remove(old_log)
-    for log in glob.glob(os.path.join(log_dir, "*.log")):
-        os.rename(log, f"{log}.old")
 
 
 if __name__ == "__main__":
