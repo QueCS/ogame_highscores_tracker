@@ -23,9 +23,6 @@ def main():
     client = get_influxdb_client_v3(config)
     servers, cats, typs, server_timezone, local_timezone = get_ogame_config(config)
 
-    # Remove .log.old logs from log_dir
-    log_cleanup(log_dir)
-
     # Indefinitely iterate over all combinations of server, category and type
     iterations = len(servers) * len(cats) * len(typs)
     while True:
@@ -42,6 +39,9 @@ def main():
             )
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
+
+            # Remove .log.old logs from log_dir
+            log_cleanup(log_dir)
 
             # Fetch data from API and update database
             data = fetch_api(server, cat, typ, logger)

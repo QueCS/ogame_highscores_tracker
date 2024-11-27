@@ -1,4 +1,4 @@
-import glob
+from glob import glob
 import os
 import tomllib
 import logging
@@ -6,11 +6,23 @@ from influxdb_client import InfluxDBClient
 from influxdb_client_3 import InfluxDBClient3
 
 
-def log_cleanup(log_dir):
-    for old_log in glob.glob(os.path.join(log_dir, "*.log.old")):
-        os.remove(old_log)
-    for log in glob.glob(os.path.join(log_dir, "*.log")):
-        os.rename(log, f"{log}.old")
+def log_cleanup(log_dir, max_size=1):
+    """
+    Clean up log files in the given directory by renaming logs that are larger than a specified size and deleting their older equivalent.
+
+    Args:
+        log_dir (str): The path to the directory containing log files.
+        max_size (int, optional): The maximum file size for a log file in MB. Logs larger than this value will be renamed. Defaults to 1MB.
+
+    Returns:
+        None
+    """
+    for log in glob(os.path.join(log_dir, "*.log")):
+        old_log = f"{log}.old"
+        if os.path.getsize(log) > max_size * 1024 * 1024:
+            if os.path.exists(old_log):
+                os.remove(old_log)
+            os.rename(log, f"{log}.old")
 
 
 def read_config_file():
