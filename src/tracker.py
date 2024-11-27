@@ -46,10 +46,12 @@ def main():
             # Fetch data from API and update database
             data = fetch_api(server, cat, typ, logger)
             if data is None:
+                # Detach logging handler to prevent duplicate logs and os.error "too many file opened"
+                logger.removeHandler(file_handler)
                 continue
             update_db(data, server, cat, typ, client, logger)
 
-            # Detach logging handler to prevent duplicate logs
+            # Detach logging handler to prevent duplicate logs and os.error "too many file opened"
             logger.removeHandler(file_handler)
 
             # Sleep so total loop time is ~15 minutes
