@@ -4,13 +4,13 @@ from utils import (
     get_logging_config,
     get_influxdb_client_v3,
     get_ogame_config,
-    log_cleanup,
 )
 from influxdb_client_3 import InfluxDBClient3, Point, WritePrecision
 import requests
 import json
 import time
 import logging
+import logging.handlers
 import itertools
 
 os.chdir(f"{os.path.dirname(__file__)}")
@@ -33,15 +33,14 @@ def main():
             log_filename = f"{log_dir}/{server}_{cat}_{typ}_tracker.log"
             if not os.path.exists(os.path.dirname(log_filename)):
                 os.makedirs(os.path.dirname(log_filename))
-            file_handler = logging.FileHandler(log_filename)
+            file_handler = logging.handlers.RotatingFileHandler(
+                log_filename, maxBytes=1024 * 1024, backupCount=1
+            )
             formatter = logging.Formatter(
                 "%(asctime)s %(levelname)s - %(funcName)s(): %(message)s"
             )
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
-
-            # Remove .log.old logs from log_dir
-            log_cleanup(log_dir)
 
             # Fetch data from API and update database
             data = fetch_api(server, cat, typ, logger)
