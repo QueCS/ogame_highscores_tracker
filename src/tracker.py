@@ -5,7 +5,7 @@ from utils import (
     get_influxdb_config,
     get_ogame_config,
 )
-from influxdb_client import InfluxDBClient, Point, WritePrecision, WriteOptions
+from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 import requests
 import json
