@@ -23,7 +23,6 @@ def main():
     log_dir, log_lvl = get_logging_config(config)
     servers, cats, typs, server_timezone, local_timezone = get_ogame_config(config)
     url, org, bucket, token = get_influxdb_config(config)
-
     # Indefinitely iterate over all combinations of server, category and type
     iterations = len(servers) * len(cats) * len(typs)
     while True:
@@ -42,7 +41,6 @@ def main():
             )
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
-
             # Fetch data from API and update database
             data = fetch_api(server, cat, typ, logger)
             if data is None:
@@ -50,10 +48,8 @@ def main():
                 logger.removeHandler(file_handler)
                 continue
             update_db(data, server, cat, typ, url, org, bucket, token, logger)
-
             # Detach logging handler to prevent duplicate logs and os.error "too many file opened"
             logger.removeHandler(file_handler)
-
             # Sleep so total loop time is ~15 minutes
             time.sleep(900 / iterations)
             continue
