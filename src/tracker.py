@@ -102,6 +102,26 @@ def update_db(
     token: str,
     logger: logging.Logger,
 ) -> None:
+    """
+    Parses the provided API data and updates the InfluxDB database accordingly.
+
+    Args:
+        data (dict): The data fetched from the OGame "highscores" API.
+        server (str): The ID of the OGame server.
+        cat (str): The highscore category.
+        typ (str): The highscore type.
+        url (str): The URL of the InfluxDB instance.
+        org (str): The organization name in InfluxDB.
+        bucket (str): The bucket name in InfluxDB.
+        token (str): The authentication token for InfluxDB.
+        logger (logging.Logger): The logger instance for logging messages.
+
+    Returns:
+        None
+
+    Raises:
+        Exception: If there is an error while writing to the database.
+    """
     logger.info("Parsing data and updating database")
     timestamp = int(data["@attributes"]["timestamp"])
     points = []
