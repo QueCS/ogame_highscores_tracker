@@ -1,0 +1,38 @@
+[SCRIPT]
+log_dir = '../logs'
+log_lvl = 'logging.INFO'
+
+[INFLUXDB]
+url = 'http://localhost:8086'
+org = ''
+bucket = ''
+token = ''
+
+[OGAME]
+servers = [
+    '172-fr',
+    '177-fr',
+    '197-fr',
+    '198-fr',
+    '253-fr',
+    '255-fr',
+    '256-fr',
+    '257-fr',
+    '258-fr',
+    '259-fr',
+    '260-fr',
+    '261-fr',
+    '262-fr',
+    '263-fr',
+    '264-fr',
+    '265-fr',
+    '266-fr',
+    '267-fr',
+    '268-fr',
+    '269-fr',
+    '270-fr',
+    '271-fr',
+    '272-fr'
+]
+categories = [1, 2]
+types = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
