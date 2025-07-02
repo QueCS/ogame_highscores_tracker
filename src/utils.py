@@ -1,8 +1,6 @@
-from glob import glob
 import os
 import tomllib
 import logging
-from influxdb_client import InfluxDBClient
 
 
 def read_config_file():
