@@ -23,14 +23,15 @@ def main():
     log_dir, log_lvl = get_logging_config(config)
     servers, cats, typs, server_timezone, local_timezone = get_ogame_config(config)
     url, org, bucket, token = get_influxdb_config(config)
+    last_server = None
     # Indefinitely iterate over all combinations of server, category and type
     iterations = len(servers) * len(cats) * len(typs)
     while True:
         for server, cat, typ in itertools.product(servers, cats, typs):
             # Logging setup
-            logger = logging.getLogger(f"{server}_{cat}_{typ}_logger")
+            logger = logging.getLogger(f"{server}_logger")
             logger.setLevel(log_lvl)
-            log_filename = f"{log_dir}/{server}_{cat}_{typ}_tracker.log"
+            log_filename = f"{log_dir}/{server}_tracker.log"
             if not os.path.exists(os.path.dirname(log_filename)):
                 os.makedirs(os.path.dirname(log_filename))
             file_handler = logging.handlers.RotatingFileHandler(
@@ -41,13 +42,42 @@ def main():
             )
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
-            # Fetch data from API and update database
-            data = fetch_api(server, cat, typ, logger)
-            if data is None:
+            # Fetch highscores_data from Highscores API and update database
+            highscores_data = fetch_highscores_api(server, cat, typ, logger)
+            if highscores_data is None:
+                logger.warning("highscores_data is None")
                 # Detach logging handler to prevent duplicate logs and os.error "too many file opened"
                 logger.removeHandler(file_handler)
+                time.sleep(1)
                 continue
-            update_db(data, server, cat, typ, url, org, bucket, token, logger)
+            highscores_to_db(
+                highscores_data, server, cat, typ, url, org, bucket, token, logger
+            )
+            time.sleep(1)
+            # Check if current iteration is on a new werver or not
+            # If it is, update players and alliances attributes
+            if server != last_server:
+                players_data = fetch_players_api(server, logger)
+                if players_data is None:
+                    logger.warning("players_data is None")
+                    logger.removeHandler(file_handler)
+                    time.sleep(1)
+                    continue
+                players_attributes_to_db(
+                    players_data, server, url, org, bucket, token, logger
+                )
+                time.sleep(1)
+                alliances_data = fetch_alliances_api(server, logger)
+                if alliances_data is None:
+                    logger.warning("alliances_data is None")
+                    logger.removeHandler(file_handler)
+                    time.sleep(1)
+                    continue
+                alliances_attributes_to_db(
+                    alliances_data, server, url, org, bucket, token, logger
+                )
+                time.sleep(1)
+                last_server = server
             # Detach logging handler to prevent duplicate logs and os.error "too many file opened"
             logger.removeHandler(file_handler)
             # Sleep so total loop time is ~15 minutes
@@ -55,7 +85,9 @@ def main():
             continue
 
 
-def fetch_api(server: str, cat: str, typ: str, logger: logging.Logger) -> dict | None:
+def fetch_highscores_api(
+    server: str, cat: str, typ: str, logger: logging.Logger
+) -> dict | None:
     """
     Fetches and returns OGame "highscores" API data.
 
@@ -91,8 +123,8 @@ def fetch_api(server: str, cat: str, typ: str, logger: logging.Logger) -> dict |
     return data
 
 
-def update_db(
-    data: dict,
+def highscores_to_db(
+    highscores_data: dict,
     server: str,
     cat: str,
     typ: str,
@@ -122,8 +154,8 @@ def update_db(
     Raises:
         Exception: If there is an error while writing to the database.
     """
-    logger.info("Parsing data and updating database")
-    timestamp = int(data["@attributes"]["timestamp"])
+    logger.info("Parsing highscores data and updating database")
+    timestamp = int(highscores_data["@attributes"]["timestamp"])
     points = []
     if typ == 0:
         highscore_type = "general"
@@ -154,11 +186,11 @@ def update_db(
         highscore_type = "unkown"
     if cat == 1:
         highscore_category = "player"
-        for player in data["player"]:
+        for player in highscores_data["player"]:
+            player_id = str(player["@attributes"]["id"])
+            rank = int(player["@attributes"]["position"])
+            score = int(player["@attributes"]["score"])
             if highscore_type == "military":
-                player_id = int(player["@attributes"]["id"])
-                rank = int(player["@attributes"]["position"])
-                score = int(player["@attributes"]["score"])
                 try:
                     ships = int(player["@attributes"]["ships"])
                 except KeyError:
@@ -175,9 +207,6 @@ def update_db(
                 )
                 points.append(point)
             else:
-                player_id = int(player["@attributes"]["id"])
-                rank = int(player["@attributes"]["position"])
-                score = int(player["@attributes"]["score"])
                 point = (
                     Point(server)
                     .tag("player_id", player_id)
@@ -190,8 +219,8 @@ def update_db(
                 points.append(point)
     elif cat == 2:
         highscore_category = "alliance"
-        for alliance in data["alliance"]:
-            alliance_id = int(alliance["@attributes"]["id"])
+        for alliance in highscores_data["alliance"]:
+            alliance_id = str(alliance["@attributes"]["id"])
             rank = int(alliance["@attributes"]["position"])
             score = int(alliance["@attributes"]["score"])
             point = (
@@ -207,6 +236,122 @@ def update_db(
     else:
         logger.warning(f"Invalid highscore category: {cat}")
         highscore_category = "unknown"
+    try:
+        influx_client = InfluxDBClient(url, token, org)
+        influx_client.write_api(write_options=SYNCHRONOUS).write(bucket, org, points)
+        logger.info("Done")
+        return None
+    except Exception as e:
+        logger.error(f"Failed writing to database: {e}")
+        return None
+
+
+def fetch_players_api(server: str, logger: logging.Logger) -> dict | None:
+    url = f"https://s{server}.ogame.gameforge.com/api/players.xml?toJson=1"
+    logger.info(f"Fetching {url}")
+    try:
+        response = requests.get(url)
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"Failed fetching the API: {e}")
+        return None
+    if response.status_code != 200:
+        logger.warning(f"Failed fetching the API: {response.status_code}")
+        return None
+    try:
+        data = json.loads(response.text)
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed decoding JSON response: {e}")
+        return None
+    return data
+
+
+def players_attributes_to_db(
+    players_data: dict,
+    server: str,
+    url: str,
+    org: str,
+    bucket: str,
+    token: str,
+    logger: logging.Logger,
+) -> None:
+    logger.info("Parsing players data and updating database")
+    points = []
+    timestamp = int(players_data["@attributes"]["timestamp"])
+    for player in players_data["player"]:
+        player_id = player["@attributes"]["id"]
+        player_name = player["@attributes"].get("name")
+        player_status = str(player["@attributes"].get("status", "A"))
+        player_alliance_id = str(player["@attributes"].get("alliance"))
+        logger.info(
+            f"Successfully fetched players API and extracted player ({player_id}) attributes"
+        )
+        point = (
+            Point(server)
+            .tag("player_id", player_id)
+            .tag("category", "player_attributes")
+            .field("player_name", player_name)
+            .field("player_status", player_status)
+            .field("player_alliance_id", player_alliance_id)
+            .time(timestamp, write_precision=WritePrecision.S)
+        )
+        points.append(point)
+    try:
+        influx_client = InfluxDBClient(url, token, org)
+        influx_client.write_api(write_options=SYNCHRONOUS).write(bucket, org, points)
+        logger.info("Done")
+        return None
+    except Exception as e:
+        logger.error(f"Failed writing to database: {e}")
+        return None
+
+
+def fetch_alliances_api(server: str, logger: logging.Logger) -> dict | None:
+    url = f"https://s{server}.ogame.gameforge.com/api/alliances.xml?toJson=1"
+    logger.info(f"Fetching {url}")
+    try:
+        response = requests.get(url)
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"Failed fetching the API: {e}")
+        return None
+    if response.status_code != 200:
+        logger.warning(f"Failed fetching the API: {response.status_code}")
+        return None
+    try:
+        data = json.loads(response.text)
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed decoding JSON response: {e}")
+        return None
+    return data
+
+
+def alliances_attributes_to_db(
+    alliances_data: dict,
+    server: str,
+    url: str,
+    org: str,
+    bucket: str,
+    token: str,
+    logger: logging.Logger,
+) -> None:
+    logger.info("Parsing alliances data and updating database")
+    points = []
+    timestamp = int(alliances_data["@attributes"]["timestamp"])
+    for alliance in alliances_data["alliance"]:
+        alliance_id = alliance["@attributes"]["id"]
+        alliance_name = str(alliance["@attributes"].get("name"))
+        alliance_tag = str(alliance["@attributes"].get("tag"))
+        logger.info(
+            f"Successfully fetched alliance API and extracted alliance ({alliance_id}) attributes"
+        )
+        point = (
+            Point(server)
+            .tag("alliance_id", alliance_id)
+            .tag("category", "alliance_attributes")
+            .field("alliance_name", alliance_name)
+            .field("alliance_tag", alliance_tag)
+            .time(timestamp, write_precision=WritePrecision.S)
+        )
+        points.append(point)
     try:
         influx_client = InfluxDBClient(url, token, org)
         influx_client.write_api(write_options=SYNCHRONOUS).write(bucket, org, points)
