@@ -2,3 +2,4 @@ logs
 config.toml
 .venv
 __pycache__
+.vscode
