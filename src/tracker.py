@@ -282,7 +282,7 @@ def players_attributes_to_db(
         player_name = player["@attributes"].get("name")
         player_status = str(player["@attributes"].get("status", "A"))
         player_alliance_id = str(player["@attributes"].get("alliance"))
-        logger.info(
+        logger.debug(
             f"Successfully fetched players API and extracted player ({player_id}) attributes"
         )
         point = (
@@ -340,7 +340,7 @@ def alliances_attributes_to_db(
         alliance_id = alliance["@attributes"]["id"]
         alliance_name = str(alliance["@attributes"].get("name"))
         alliance_tag = str(alliance["@attributes"].get("tag"))
-        logger.info(
+        logger.debug(
             f"Successfully fetched alliance API and extracted alliance ({alliance_id}) attributes"
         )
         point = (
